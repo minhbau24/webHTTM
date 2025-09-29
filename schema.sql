@@ -112,6 +112,10 @@ VALUES ('alice', 'alice@example.com', '$2b$10$YwysaxJ33/5t7cYdk9iA/uVLgE6aiYYlbZ
 INSERT INTO voice_samples (user_id, file_path)
 VALUES (1, '/audio/voice_alice.wav');
 
+-- Chèn 1 log xác thực
+INSERT INTO auth_logs (user_id, audio_input_path, is_real_voice, matched_user_id, result)
+VALUES (1, '/audio/input_test1.wav', TRUE, 1, 'success');
+
 -- Chèn 1 model
 INSERT INTO models (name, version, description, status, file_path)
 VALUES ('SpeakerID-v2', '1.0', 'Model nhận dạng giọng nói', 'active', '/models/speakerid_v2.h5');

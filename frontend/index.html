@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>User History</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 80%;
+            margin: 20px auto;
+        }
+
+        th,
+        td {
+            border: 1px solid #ccc;
+            padding: 8px 12px;
+            text-align: center;
+        }
+
+        th {
+            background: #f4f4f4;
+        }
+    </style>
+</head>
+
+<body>
+    <h2 style="text-align:center;">Lịch sử xác thực</h2>
+
+    <table id="historyTable">
+        <thead>
+            <tr>
+                <th>Audio</th>
+                <th>Real Voice</th>
+                <th>Matched User</th>
+                <th>Result</th>
+                <th>Timestamp</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        async function loadHistory(userId) {
+            const res = await fetch(`http://localhost:3000/history/${userId}`);
+            const data = await res.json();
+
+            if (!data.success) {
+                alert("Không lấy được dữ liệu: " + data.message);
+                return;
+            }
+
+            const tbody = document.querySelector("#historyTable tbody");
+            tbody.innerHTML = "";
+
+            data.history.forEach(log => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+          <td>${log.audio_input_path || "-"}</td>
+          <td>${log.is_real_voice ? "✔️" : "❌"}</td>
+          <td>${log.matched_user_id || "N/A"}</td>
+          <td>${log.result}</td>
+          <td>${new Date(log.timestamp).toLocaleString()}</td>
+        `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // test với userId = 1
+        loadHistory(1);
+    </script>
+</body>
+
+</html>

@@ -2,7 +2,7 @@ const db = require("../utils/db");
 
 exports.history = async (userId) => {
     const [rows] = await db.query(
-        "SELECT id, audio_input_path, is_real_voice, matched_user_id, result, timestamp \
+        "SELECT audio_input_path, is_real_voice, matched_user_id, result, timestamp \
          FROM auth_logs WHERE user_id = ? ORDER BY timestamp DESC",
         [userId]
     );
