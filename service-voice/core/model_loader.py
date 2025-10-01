@@ -128,39 +128,27 @@ class ECAPA_Finetune_AAM(nn.Module):
             return emb.squeeze(1)
     
 class WavLM_Finetune(nn.Module):
-    def __init__(self, num_classes, freeze_backbone=False):
+    def __init__(self, num_classes, freeze_backbone=False, margin=0.2, scale=30):
         super().__init__()
         self.backbone = WavLMModel.from_pretrained("microsoft/wavlm-base-plus")
         if freeze_backbone:
             for p in self.backbone.parameters():
                 p.requires_grad = False
         self.embedding_dim = self.backbone.config.hidden_size
-        self.classifier = nn.Linear(self.embedding_dim, num_classes)
+        self.aam = AAMSoftmax(self.embedding_dim, num_classes, margin=margin, scale=scale)
 
-    def forward(self, x, lengths):
+    def forward(self, x, lengths, labels=None):
         # x: [B, T]
         attn_mask = torch.arange(x.size(1), device=x.device)[None, :] < lengths[:, None]
 
         outputs = self.backbone(x, attention_mask=attn_mask)
         hidden = outputs.last_hidden_state  # [B, T', H]
 
-        # mean pooling theo chiều T'
-        emb = hidden.mean(dim=1)  # KHÔNG dùng attn_mask ở đây
-        out = self.classifier(emb)
-        return out, emb
-    
-    def get_embedding(self, x, lengths):
-        """Chỉ lấy embedding, không qua classifier"""
-        self.eval()
-        with torch.no_grad():
-            attn_mask = torch.arange(x.size(1), device=x.device)[None, :] < lengths[:, None]
+        # mean pooling (nếu muốn chuẩn hơn có thể mask theo attn_mask)
+        emb = hidden.mean(dim=1)
 
-            outputs = self.backbone(x, attention_mask=attn_mask)
-            hidden = outputs.last_hidden_state  # [B, T', H]
-
-            # mean pooling theo chiều T'
-            emb = hidden.mean(dim=1)  # KHÔNG dùng attn_mask ở đây
-            return emb
+        logits = self.aam(emb, labels)
+        return logits, emb
 
 class ECAPA_Deepfake(nn.Module):
     def __init__(self, backbone, freeze_backbone=False):
@@ -333,7 +321,7 @@ class ModelLoader:
                 backbone = pretrained.modules.embedding_model
                 return ECAPA_Finetune_AAM(backbone, num_classes=num_classes, freeze_backbone=False)
             elif self.model_name == "wavlm":
-                return ECAPA_Finetune_AAM(num_classes=num_classes)
+                return WavLM_Finetune(num_classes=num_classes)
             else:
                 raise ValueError(f"Unsupported model name: {self.model_name}")
         elif self.model_type == 'deepfake':

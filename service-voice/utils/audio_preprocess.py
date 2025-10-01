@@ -51,7 +51,7 @@ def preprocess_audio(model_name:str, file_path: str, max_len: float=3.0, sample_
                 waveform=chunk.unsqueeze(0),    # [1, T]
                 num_mel_bins=80,                # số lượng Mel bins
                 sample_frequency=sample_rate,   # tần số mẫu
-                window_type='hanning',          # loại cửa sổ    
+                window_type='hamming',          # loại cửa sổ    
                 dither=1e-5,                    # thêm dithering để giảm thiểu các artefacts
                 energy_floor=0.0
             )

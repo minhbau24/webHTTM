@@ -1,70 +1,101 @@
 import torch
+from sklearn.metrics import accuracy_score
 
-def train_one_epoch(model, dataloader, optimizer, loss_fn, model_name, device="cpu"):
-    model.train()
-    total_loss = 0.0
-    for batch in dataloader:
-        if model_name == "CNN_RNN":
-            Wavs, labels = batch
-            Wavs, labels = Wavs.to(device), labels.to(device)
-            logits, emb = model(Wavs)
+class Trainer:
+    def __init__(self, model, model_name, optimizer, loss_fn, scheduler, device, save_dict='./checkpoint', on_epoch_end=None):
+        self.model = model
+        self.model_name = model_name.lower()
+        self.optimizer = optimizer
+        self.loss_fn = loss_fn
+        self.scheduler = scheduler
+        self.device = device
+        self.save_dict = save_dict
+        self.on_epoch_end = on_epoch_end
 
-        elif model_name == "ecapa":
-            Wavs, labels, _ = batch
-            Wavs, labels = Wavs.to(device), labels.to(device)
-            logits, emb = model(Wavs)
-
-        elif model_name == "wavlm":
-            Wavs, labels, lengths = batch
-            Wavs, labels, lengths = Wavs.to(device), labels.to(device), lengths.to(device)
-            logits, emb = model(Wavs, lengths)
-        
-        else:
-            raise ValueError("model_name must be 'ecapa' or 'wavlm' or 'cnn_rnn'")
-        
-        loss = loss_fn(logits, labels)
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        total_loss += loss.item()
-
-    return total_loss / len(dataloader)
-
-def evaluate(model, dataloader, loss_fn, device, model_name):
-    model.eval()
-    total_loss = 0.0
-    correct = 0
-    total = 0
-
-    with torch.no_grad():
+    def train_one_epoch(self, dataloader):
+        self.model.train()
+        total_loss = 0.0
+        y_true, y_pred = [], []
         for batch in dataloader:
-            if model_name == "cnn_rnn":
-                wavs, labels = batch
-                wavs, labels = wavs.to(device), labels.to(device)
-                logits, emb = model(wavs)
+            if self.model_name in ['cnn_rnn', 'ecapa']:
+                feats, labels = batch
+                feats, labels = feats.to(self.device), labels.to(self.device)
+                logits, _ = self.model(feats)
 
-            elif model_name == "ecapa":
-                wavs, labels, _ = batch
-                wavs, labels = wavs.to(device), labels.to(device)
-                logits, emb = model(wavs)
+            elif self.model_name == 'wavlm':
+                signals, lengths, labels = batch
+                signals, lengths, labels = signals.to(self.device), lengths.to(self.device), labels.to(self.device)
+                logits, _ = self.model(signals, lengths)
+            
+            else:
+                raise ValueError(f"Unsupported model name: {self.model_name}")
 
-            elif model_name == "wavlm":
-                wavs, labels, lengths = batch
-                wavs, labels, lengths = wavs.to(device), labels.to(device), lengths.to(device)
-                logits, emb = model(wavs, lengths)
-
-            # loss
-            loss = loss_fn(logits, labels)
+            loss = self.loss_fn(logits, labels)
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
             total_loss += loss.item()
-
-            # acc
             preds = torch.argmax(logits, dim=1)
-            correct += (preds == labels).sum().item()
-            total += labels.size(0)
+            y_true.extend(labels.cpu().numpy())
+            y_pred.extend(preds.cpu().numpy())
+        
+        acc = accuracy_score(y_true, y_pred)
+        avg_loss = total_loss / len(dataloader)
+        return acc, avg_loss
+    
+    def evaluate(self, dataloader):
+        self.model.eval()
+        y_true, y_pred = [], []
+        total_loss = 0.0
 
-    avg_loss = total_loss / len(dataloader)
-    acc = correct / total
-    return avg_loss, acc
+        with torch.no_grad():
+            for batch in dataloader:
+                if self.model_name in ['cnn_rnn', 'ecapa']:
+                    feats, labels = batch
+                    feats, labels = feats.to(self.device), labels.to(self.device)
+                    logits, _ = self.model(feats)
+                elif self.model_name == 'wavlm':
+                    signals, lengths, labels = batch
+                    signals, lengths, labels = signals.to(self.device), lengths.to(self.device), labels.to(self.device)
+                    logits, _ = self.model(signals, lengths)
+                else:
+                    raise ValueError(f"Unsupported model name: {self.model_name}")
+            
+                loss = self.loss_fn(logits, labels)
+                total_loss += loss.item()
+                preds = torch.argmax(logits, dim=1)
+                y_true.extend(labels.cpu().numpy())
+                y_pred.extend(preds.cpu().numpy())
+        
+        acc = accuracy_score(y_true, y_pred)
+        return acc, total_loss / len(dataloader)
+    
+    def fit(self, train_loader, val_loader, num_epochs=50, patience=7, ckpt_name="best_model.pth"):
+        best_val = float('inf')
+        counter = 0
+        for epoch in range(1, num_epochs+1):
+            train_acc, train_loss = self.train_one_epoch(train_loader)
+            val_acc, val_loss = self.evaluate(val_loader)
 
+            if self.scheduler is not None:
+                try:
+                    self.scheduler.step(val_loss)
+                except:
+                    pass
+            if val_loss < best_val:
+                best_val = val_loss
+                counter = 0
+                path = f"{self.save_dict}/{ckpt_name}"
+                torch.save({
+                    'model_state_dict': self.model.state_dict(),
+                    'optimizer_state_dict': getattr(self.optimizer, 'state_dict', lambda: None)(),
+                    'epoch': epoch,
+                    'val_loss': val_loss
+                }, path)
+            else:
+                counter += 1
+                if counter >= patience:
+                    break
+
+            if self.on_epoch_end is not None:
+                self.on_epoch_end(epoch, train_acc, train_loss, val_acc, val_loss)
