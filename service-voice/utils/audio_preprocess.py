@@ -3,13 +3,14 @@ import torchaudio
 
 def preprocess_audio(model_name:str, file_path: str, max_len: float=3.0, sample_rate: int=16000):
     """
-    Đầu vào: 
+    Tiền xử lý audio cho các model khác nhau.
+    args: 
         model_name: tên model để xác định config
         file_path: đường dẫn tới file âm thanh
         max_len: độ dài tối đa của đoạn audio (giây)
         sample_rate: tần số mẫu mong muốn (Hz)
-    Đầu ra:
-
+    Returns:
+        features: list các tensor (đã được tiền xử lý)
     """
     # ==== Load audio ====
     try:
@@ -34,7 +35,7 @@ def preprocess_audio(model_name:str, file_path: str, max_len: float=3.0, sample_
         chunks = [signal[i*max_samples:(i+1)*max_samples] for i in range(n_chunks)]
         if total_len % max_samples != 0:
             tmp = signal[-max_samples:]
-            torch.nn.functional.pad(tmp, (0, max_samples - tmp.size(0)))
+            tmp = torch.nn.functional.pad(tmp, (0, max_samples - tmp.size(0)))
             chunks.append(tmp)
     else:
         pad = max_samples - total_len

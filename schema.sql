@@ -26,6 +26,7 @@ CREATE TABLE voice_samples (
     user_id INT NOT NULL,
     file_path VARCHAR(255),
     embedding_vector BLOB,  -- có thể thay bằng JSON nếu MySQL 8+
+    model_id INT NOT NULL,  -- model dùng để tạo vector
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
