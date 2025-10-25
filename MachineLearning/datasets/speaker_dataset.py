@@ -16,7 +16,12 @@ class SpeakerDataset(Dataset):
         return len(self.df)
     
     def __load_resample(self, path):
-        sig, fs = torchaudio.load(path) # [C, T]
+        try:
+            sig, fs = torchaudio.load(path)  # [C, T]
+        except Exception as e:
+            print(f"⚠️  Warning: Could not load {path}. Error: {e}")
+            # Trả về một tensor rỗng nếu không thể tải file
+            return torch.zeros(self.max_samples)
 
         if sig.shape[0] > 1:
             sig = torch.mean(sig, dim=0, keepdim=True)
@@ -28,21 +33,19 @@ class SpeakerDataset(Dataset):
     def __getitem__(self, index):
         row = self.df[index]
         path, label = row['file_path'], row['label']
-
         signal = self.__load_resample(path)
         L = signal.size(0) # độ dài của audio (số mẫu)
-
-        # crop/pad to fiexed length
-        if L > self.max_len:
+        # crop/pad to fixed length
+        if L > self.max_samples:  # ✅ sửa điều kiện
             if self.augment:
-                start = torch.randint(0, L - self.max_samples+1, (1,)).item()
-                seg = signal[start:start+self.max_samples]
+                start = torch.randint(0, L - self.max_samples + 1, (1,)).item()
+                seg = signal[start:start + self.max_samples]
             else:
                 seg = signal[:self.max_samples]
             length = self.max_samples
         else:
             pad = self.max_samples - L
-            seg = torch.nn.functional.pad(signal, (0, pad)) # add padding at the end
+            seg = torch.nn.functional.pad(signal, (0, pad))
             length = L
         
         if self.model_name in ['cnn_rnn', 'ecapa']:

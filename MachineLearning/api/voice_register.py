@@ -7,7 +7,7 @@ from utils.feature_extraction import extract_embedding
 router = APIRouter()
 
 @router.post("/register_voice/")
-async def register_voice(model_name: str, ckpt_path: str, file_path: str, num_classes: int = None):
+async def register_voice(model_name: str, ckpt_path: str, file_path: str, num_classes: int = 100):
     """
     Đăng ký giọng nói mới bằng cách trích xuất embedding từ file audio.
     Args:

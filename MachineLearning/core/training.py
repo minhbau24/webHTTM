@@ -1,8 +1,9 @@
+import asyncio
 import torch
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
 
 class Trainer:
-    def __init__(self, model, model_name, optimizer, loss_fn, scheduler, device, save_dict='./checkpoint', on_epoch_end=None):
+    def __init__(self, model, model_name, optimizer, loss_fn, scheduler, device, model_type='embedding', save_dict='./checkpoint', on_epoch_end=None):
         self.model = model
         self.model_name = model_name.lower()
         self.optimizer = optimizer
@@ -11,11 +12,13 @@ class Trainer:
         self.device = device
         self.save_dict = save_dict
         self.on_epoch_end = on_epoch_end
+        self.model_type = model_type
 
     def train_one_epoch(self, dataloader):
         self.model.train()
         total_loss = 0.0
         y_true, y_pred = [], []
+        
         for batch in dataloader:
             if self.model_name in ['cnn_rnn', 'ecapa']:
                 feats, labels = batch
@@ -30,6 +33,8 @@ class Trainer:
             else:
                 raise ValueError(f"Unsupported model name: {self.model_name}")
 
+            if self.model_type == 'deepfake':
+                labels = labels.float().unsqueeze(1) 
             loss = self.loss_fn(logits, labels)
             self.optimizer.zero_grad()
             loss.backward()
@@ -43,7 +48,7 @@ class Trainer:
         avg_loss = total_loss / len(dataloader)
         return acc, avg_loss
     
-    def evaluate(self, dataloader):
+    def evaluate(self, dataloader, test=False):
         self.model.eval()
         y_true, y_pred = [], []
         total_loss = 0.0
@@ -60,17 +65,31 @@ class Trainer:
                     logits, _ = self.model(signals, lengths)
                 else:
                     raise ValueError(f"Unsupported model name: {self.model_name}")
-            
+
+                if self.model_type == 'deepfake':
+                    labels = labels.float().unsqueeze(1)
                 loss = self.loss_fn(logits, labels)
                 total_loss += loss.item()
                 preds = torch.argmax(logits, dim=1)
                 y_true.extend(labels.cpu().numpy())
                 y_pred.extend(preds.cpu().numpy())
         
+        if test:
+            precision = precision_score(y_true, y_pred, average='macro', zero_division=0)
+            recall = recall_score(y_true, y_pred, average='macro', zero_division=0)
+            f1 = f1_score(y_true, y_pred, average='macro', zero_division=0)
+            acc = accuracy_score(y_true, y_pred)
+            return {
+                "accuracy": acc,
+                "precision": precision,
+                "recall": recall,
+                "f1": f1,
+                "loss": total_loss / len(dataloader)
+            }
         acc = accuracy_score(y_true, y_pred)
         return acc, total_loss / len(dataloader)
-    
-    def fit(self, train_loader, val_loader, num_epochs=50, patience=7, ckpt_name="best_model.pth"):
+        
+    async def fit(self, train_loader, val_loader, num_epochs=50, patience=7, ckpt_name="best_model.pth"):
         best_val = float('inf')
         counter = 0
         for epoch in range(1, num_epochs+1):
@@ -98,4 +117,7 @@ class Trainer:
                     break
 
             if self.on_epoch_end is not None:
-                self.on_epoch_end(epoch, train_acc, train_loss, val_acc, val_loss)
+                if asyncio.iscoroutinefunction(self.on_epoch_end):
+                    await self.on_epoch_end(epoch, train_acc, train_loss, val_acc, val_loss)
+                else:
+                    self.on_epoch_end(epoch, train_acc, train_loss, val_acc, val_loss)
