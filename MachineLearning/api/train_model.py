@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 from typing import Optional
 import os
 import traceback
+from datetime import datetime
 
 from core.model_loader import ModelLoader
 from core.training import Trainer
@@ -28,12 +29,20 @@ async def train_with_websocket(
     save_dir: str = "./checkpoints",
     ckpt_name: str = "best_model.pt",
     ckpt_path: Optional[str] = None,
-    num_workers: int = 0
+    num_workers: int = 0,
+    model_id: Optional[int] = None,
+    version: Optional[str] = None
 ):
     """
     Helper function: Training với WebSocket streaming.
     Nhận parameters đã parse sẵn từ endpoint.
     """
+    # Track training start time
+    training_start_time = datetime.now()
+    
+    # Store training logs for all epochs
+    train_logs = []
+    
     try:
         # Initial status
         await websocket.send_json({
@@ -128,6 +137,16 @@ async def train_with_websocket(
         # --- Async callback để stream tiến trình ---
         async def on_epoch_end(epoch, train_acc, train_loss, val_acc, val_loss):
             try:
+                # Store log for this epoch
+                train_logs.append({
+                    "epoch": epoch,
+                    "train_accuracy": float(train_acc),
+                    "train_loss": float(train_loss),
+                    "val_accuracy": float(val_acc),
+                    "val_loss": float(val_loss)
+                })
+                
+                # Send epoch update to client
                 await websocket.send_json({
                     "type": "epoch",
                     "epoch": epoch,
@@ -193,13 +212,43 @@ async def train_with_websocket(
 
         test_metrics = trainer.evaluate(val_loader, test=True)
 
+        # Training finished time
+        training_finished_time = datetime.now()
+
         # --- Send test results ---
-        await websocket.send_json({
+        completed_message = {
             "type": "completed",
             "message": "Training completed successfully!",
+            
+            # Thông tin cơ bản
+            "model_name": model_name,
+            "model_type": model_type,
+            "version": version,
+            "save_dir": save_dir,
+            
+            # Thời gian
+            "started_at": training_start_time.isoformat(),
+            "finished_at": training_finished_time.isoformat(),
+            "duration_seconds": (training_finished_time - training_start_time).total_seconds(),
+            
+            # Checkpoint
+            "checkpoint_path": checkpoint_path,
             "best_val_loss": float(best_val_loss) if best_val_loss else None,
             "final_epoch": final_epoch,
-            "checkpoint_path": checkpoint_path,
+            
+            # Hyperparameters
+            "hyperparameters": {
+                "num_epochs": num_epochs,
+                "batch_size": batch_size,
+                "learning_rate": learning_rate,
+                "patience": patience,
+                "num_classes": num_classes
+            },
+            
+            # Train logs (tất cả epochs)
+            "train_logs": train_logs,
+            
+            # Test results (scores)
             "test_results": {
                 "accuracy": float(test_metrics["accuracy"]),
                 "precision": float(test_metrics["precision"]),
@@ -207,7 +256,15 @@ async def train_with_websocket(
                 "f1": float(test_metrics["f1"]),
                 "loss": float(test_metrics["loss"])
             }
-        })
+        }
+        
+        # Thêm model_id và version nếu có
+        if model_id is not None:
+            completed_message["model_id"] = model_id
+        if version is not None:
+            completed_message["version"] = version
+        
+        await websocket.send_json(completed_message)
         await asyncio.sleep(0.1)  # Delay cuối cùng trước khi đóng
 
     except WebSocketDisconnect:
@@ -310,7 +367,9 @@ async def websocket_train_endpoint(websocket: WebSocket):
             "save_dir": data.get("save_dir", "./checkpoints"),
             "ckpt_name": data.get("ckpt_name", "best_model.pt"),
             "ckpt_path": data.get("ckpt_path"),
-            "num_workers": data.get("num_workers", 0)
+            "num_workers": data.get("num_workers", 0),
+            "model_id": data.get("model_id"),
+            "version": data.get("version")
         }
 
         await train_with_websocket(websocket, **config)
