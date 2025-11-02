@@ -21,6 +21,7 @@ async def train_with_websocket(
     model_type: str,
     train_data: list,
     val_data: list,
+    test_data: list,
     num_classes: int,
     num_epochs: int = 50,
     batch_size: int = 32,
@@ -66,16 +67,18 @@ async def train_with_websocket(
         # Data already contains "label" field, pass directly to SpeakerDataset
         train_records = [{**x, "label": int(x["label"])} for x in train_data]
         val_records = [{**x, "label": int(x["label"])} for x in val_data]
+        test_records = [{**x, "label": int(x["label"])} for x in test_data]
 
 
         await websocket.send_json({
             "type": "info",
-            "message": f"Loaded datasets: Train={len(train_records)} samples, Val={len(val_records)} samples"
+            "message": f"Loaded datasets: Train={len(train_records)} samples, Val={len(val_records)} samples, Test={len(test_records)} samples"
         })
         await asyncio.sleep(0.1)
 
         train_dataset = SpeakerDataset(train_records, model_name=model_name, augment=True)
         val_dataset = SpeakerDataset(val_records, model_name=model_name, augment=False)
+        test_dataset = SpeakerDataset(test_records, model_name=model_name, augment=False)
 
         train_loader = DataLoader(
             train_dataset,
@@ -91,10 +94,17 @@ async def train_with_websocket(
             collate_fn=collate_waveform if model_name == "wavlm" else collate_spectrogram,
             num_workers=num_workers
         )
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            collate_fn=collate_waveform if model_name == "wavlm" else collate_spectrogram,
+            num_workers=num_workers
+        )
 
         await websocket.send_json({
             "type": "info",
-            "message": f"Dataloaders ready - {len(train_loader)} train batches, {len(val_loader)} val batches"
+            "message": f"Dataloaders ready - {len(train_loader)} train batches, {len(val_loader)} val batches, {len(test_loader)} test batches"
         })
         await asyncio.sleep(0.1)
 
@@ -210,7 +220,7 @@ async def train_with_websocket(
         })
         await asyncio.sleep(0.1)
 
-        test_metrics = trainer.evaluate(val_loader, test=True)
+        test_metrics = trainer.evaluate(test_loader, test=True)
 
         # Training finished time
         training_finished_time = datetime.now()
@@ -224,7 +234,7 @@ async def train_with_websocket(
             "model_name": model_name,
             "model_type": model_type,
             "version": version,
-            "save_dir": save_dir,
+            "save_dir":  save_dir + "/" + ckpt_name,
             
             # Thời gian
             "started_at": training_start_time.isoformat(),
@@ -268,7 +278,7 @@ async def train_with_websocket(
         await asyncio.sleep(0.1)  # Delay cuối cùng trước khi đóng
 
     except WebSocketDisconnect:
-        print("❌ Client disconnected during training.")
+        print("Client disconnected during training.")
     except Exception as e:
         tb = traceback.format_exc()
         try:
@@ -321,7 +331,7 @@ async def websocket_train_endpoint(websocket: WebSocket):
             """
             normalized = []
             for item in records:
-                file_path = item.get("file_path", "")
+                file_path = "../" + item.get("file_path", "")
                 # Remove escaped quotes: "\"path\"" → "path"
                 file_path = file_path.strip('"').strip("'")
                 
@@ -338,6 +348,7 @@ async def websocket_train_endpoint(websocket: WebSocket):
 
         train_data = normalize_data(data["train_data"])
         val_data = normalize_data(data["val_data"])
+        test_data = normalize_data(data["test_data"])
 
         # --- Auto-calculate num_classes if not provided or is 0 ---
         num_classes = data.get("num_classes", 0)
@@ -359,6 +370,7 @@ async def websocket_train_endpoint(websocket: WebSocket):
             "model_type": data["model_type"],
             "train_data": train_data,
             "val_data": val_data,
+            "test_data": test_data,
             "num_classes": num_classes,
             "num_epochs": data.get("num_epochs", 50),
             "batch_size": data.get("batch_size", 32),
@@ -375,7 +387,7 @@ async def websocket_train_endpoint(websocket: WebSocket):
         await train_with_websocket(websocket, **config)
 
     except WebSocketDisconnect:
-        print("❌ Client disconnected.")
+        print("Client disconnected.")
     except Exception as e:
         try:
             await websocket.send_json({
