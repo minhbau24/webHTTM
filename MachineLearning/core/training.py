@@ -106,8 +106,8 @@ class Trainer:
                 counter = 0
                 path = f"{self.save_dict}/{ckpt_name}"
                 torch.save({
-                    'model_state_dict': self.model.state_dict(),
-                    'optimizer_state_dict': getattr(self.optimizer, 'state_dict', lambda: None)(),
+                    'model': self.model.state_dict(),
+                    'optimizer': getattr(self.optimizer, 'state_dict', lambda: None)(),
                     'epoch': epoch,
                     'val_loss': val_loss
                 }, path)

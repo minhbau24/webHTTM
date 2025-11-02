@@ -311,12 +311,16 @@ class ModelLoader:
         self.model = self._build_model(num_classes).to(self.device)
         
         if ckpt_path and os.path.isfile(ckpt_path):
-            # Load checkpoint
-            checkpoint = torch.load(ckpt_path, map_location=self.device, weights_only=False)
-            if "model" in checkpoint:
-                self.model.load_state_dict(checkpoint["model"])
-            else:
-                self.model.load_state_dict(checkpoint)
+            checkpoint = torch.load(ckpt_path, map_location=self.device)
+
+            # Lấy đúng state_dict
+            state_dict = checkpoint.get("model_state_dict", checkpoint)
+
+            filtered_state_dict = {k: v for k, v in state_dict.items() if not k.startswith("aam.")}
+
+            missing, unexpected = self.model.load_state_dict(filtered_state_dict, strict=False)
+            print(f"Model loaded (ignored classifier): missing={len(missing)}, unexpected={len(unexpected)}")
+
         
         self.model.eval()
 
