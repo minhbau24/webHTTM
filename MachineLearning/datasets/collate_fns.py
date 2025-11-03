@@ -4,6 +4,7 @@ from torch.nn.utils.rnn import pad_sequence
 def collate_spectrogram(batch):
     """
     Collate function cho spectrogram (cho các model CNN_RNN, ECAPA).
+    Mục đích là để padding các feature về cùng độ dài trong batch.
     Args:
         batch: list các tuple (features, label)
             - features: tensor [T, F]
@@ -24,6 +25,7 @@ def collate_spectrogram(batch):
 def collate_waveform(batch):
     """
     Collate function cho waveform (cho model WavLM).
+    Mục đích là để giữ nguyên độ dài ban đầu của tín hiệu âm thanh.
     Args:
         batch: list các tuple (waveform, length, label)
             - signal: tensor [T]

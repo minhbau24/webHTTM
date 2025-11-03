@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api import voice_register, voice_verify, train_model
+import warnings
+warnings.filterwarnings("ignore")
 
 app = FastAPI(title="Voice Authentication Service", version="1.0.0")
 

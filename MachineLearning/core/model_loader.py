@@ -299,6 +299,28 @@ class CNN_RNN_Deepfake(nn.Module):
         out = self.classifier(reduced)
         return out, emb
 
+class WavLM_Finetune_Classification(nn.Module):
+    def __init__(self, num_classes, freeze_backbone=False):
+        super().__init__()
+        self.backbone = WavLMModel.from_pretrained("microsoft/wavlm-base-plus")
+        if freeze_backbone:
+            for p in self.backbone.parameters():
+                p.requires_grad = False
+        self.embedding_dim = self.backbone.config.hidden_size
+        self.classifier = nn.Linear(self.embedding_dim, num_classes)
+
+    def forward(self, x, lengths):
+        # x: [B, T]
+        attn_mask = torch.arange(x.size(1), device=x.device)[None, :] < lengths[:, None]
+
+        outputs = self.backbone(x, attention_mask=attn_mask)
+        hidden = outputs.last_hidden_state  # [B, T', H]
+
+        # mean pooling theo chiều T'
+        emb = hidden.mean(dim=1)  # KHÔNG dùng attn_mask ở đây
+        out = self.classifier(emb)
+        return out, emb
+    
 # =====================================
 # 2. class ModelLoader
 # =====================================
@@ -311,7 +333,7 @@ class ModelLoader:
         self.model = self._build_model(num_classes).to(self.device)
         
         if ckpt_path and os.path.isfile(ckpt_path):
-            checkpoint = torch.load(ckpt_path, map_location=self.device)
+            checkpoint = torch.load(ckpt_path, map_location=self.device, weights_only=False)
 
             # Lấy đúng state_dict
             state_dict = checkpoint.get("model_state_dict", checkpoint)
@@ -320,7 +342,8 @@ class ModelLoader:
 
             missing, unexpected = self.model.load_state_dict(filtered_state_dict, strict=False)
             print(f"Model loaded (ignored classifier): missing={len(missing)}, unexpected={len(unexpected)}")
-
+        else:
+            print("No checkpoint found, model initialized with random weights.")
         
         self.model.eval()
 
@@ -339,6 +362,8 @@ class ModelLoader:
                 return WavLM_Finetune(num_classes=num_classes)
             else:
                 raise ValueError(f"Unsupported model name: {self.model_name}")
+        elif self.model_type == 'classification':
+            return WavLM_Finetune_Classification(num_classes=num_classes)
         elif self.model_type == 'deepfake':
             if self.model_name == "cnn_rnn":
                 return CNN_RNN_Deepfake()

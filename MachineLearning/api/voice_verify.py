@@ -6,13 +6,13 @@ from utils.audio_preprocess import preprocess_audio
 
 router = APIRouter()
 
-# 🧩 Bước 1: Định nghĩa schema cho JSON body
+# Bước 1: Định nghĩa schema cho JSON body
 class VoiceVerifyRequest(BaseModel):
     model_name: str
     ckpt_path: str
     file_path: str  # hoặc đổi thành audio_base64 nếu bạn muốn gửi file base64 sau này
 
-# 🧠 Bước 2: Sửa endpoint nhận vào JSON thay vì query params
+# Bước 2: Sửa endpoint nhận vào JSON thay vì query params
 @router.post("/verify_voice/")
 async def verify_voice(request: VoiceVerifyRequest):
     """
@@ -24,7 +24,7 @@ async def verify_voice(request: VoiceVerifyRequest):
         ckpt_path = request.ckpt_path
         file_path = request.file_path
 
-        # 1️⃣ Load model deepfake
+        #Load model deepfake
         model_loader = ModelLoader(
             model_name=model_name,
             num_classes=2,
@@ -34,7 +34,7 @@ async def verify_voice(request: VoiceVerifyRequest):
         model = model_loader.get_model()
         device = model_loader.device
         
-        # 2️⃣ Preprocess audio
+        # Preprocess audio
         features = preprocess_audio(
             model_name=model_name,
             file_path=file_path,
@@ -42,7 +42,7 @@ async def verify_voice(request: VoiceVerifyRequest):
             sample_rate=16000
         )
         
-        # 3️⃣ Predict cho từng chunk
+        # Predict cho từng chunk
         model.eval()
         scores = []
         for feat in features:
@@ -56,7 +56,7 @@ async def verify_voice(request: VoiceVerifyRequest):
             prob = torch.sigmoid(logits).item()
             scores.append(prob)
         
-        # 4️⃣ Tổng hợp kết quả
+        # Tổng hợp kết quả
         avg_score = sum(scores) / len(scores)
         is_fake = avg_score >= 0.5
         

@@ -29,9 +29,10 @@ async def register_voice(request: RegisterVoiceRequest):
             num_classes=request.num_classes,
             ckpt_path=request.ckpt_path
         )
+        print("Model loaded for voice registration.")
         model = model_loader.get_model()
         device = model_loader.device
-    
+        
         # Xử lý audio
         features = preprocess_audio(
             model_name=request.model_name,
@@ -42,21 +43,27 @@ async def register_voice(request: RegisterVoiceRequest):
         lengths = torch.tensor([1.0], device=device) if request.model_name.lower() == "wavlm" else None
 
         # Trích xuất embedding
-        embs = extract_embedding(
+        res = extract_embedding(
             model=model,
             features=features,
             lengths=lengths,
             device=device,
             mean_embedding=False
         )
-
+        logits = None
+        if isinstance(res, tuple):
+            logits, embs = res  # nếu trả về (logits, embs)
+        else:
+            embs = res  # chỉ trả về embs
         # Chuyển tensor → list
         embs_serializable = [
             e.squeeze().tolist() if isinstance(e, torch.Tensor) else e
             for e in embs
         ]
 
-        return {"embeddings": embs_serializable}
+        return {"embeddings": embs_serializable,
+                "logits": logits}
 
     except Exception as e:
+        print(f"Error during voice registration: {e}")
         return {"error": str(e), "embeddings": []}

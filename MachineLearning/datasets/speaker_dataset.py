@@ -2,6 +2,7 @@ import torch
 import torchaudio
 from torch.utils.data import Dataset
 
+# Dataset cho bài toán nhận diện người nói / phát hiện deepfake
 class SpeakerDataset(Dataset):
     def __init__(self, df, model_name, sample_rate=16000, n_mels=80, max_len=3.0, augment=False):
         self.df = df
@@ -19,7 +20,7 @@ class SpeakerDataset(Dataset):
         try:
             sig, fs = torchaudio.load(path)  # [C, T]
         except Exception as e:
-            print(f"⚠️  Warning: Could not load {path}. Error: {e}")
+            print(f"Warning: Could not load {path}. Error: {e}")
             # Trả về một tensor rỗng nếu không thể tải file
             return torch.zeros(self.max_samples)
 
@@ -36,7 +37,7 @@ class SpeakerDataset(Dataset):
         signal = self.__load_resample(path)
         L = signal.size(0) # độ dài của audio (số mẫu)
         # crop/pad to fixed length
-        if L > self.max_samples:  # ✅ sửa điều kiện
+        if L > self.max_samples: 
             if self.augment:
                 start = torch.randint(0, L - self.max_samples + 1, (1,)).item()
                 seg = signal[start:start + self.max_samples]
@@ -49,7 +50,7 @@ class SpeakerDataset(Dataset):
             length = L
         
         if self.model_name in ['cnn_rnn', 'ecapa']:
-            # FBank
+            # Mel-filterbank features (FBank) — là ma trận biểu diễn năng lượng theo thời gian và theo tần số Mel.
             feats = torchaudio.compliance.kaldi.fbank(
                 waveform=seg.unsqueeze(0),      # [1, T]
                 num_mel_bins=self.n_mels,      # số lượng Mel bins
@@ -67,7 +68,3 @@ class SpeakerDataset(Dataset):
             return seg, length, label
         else:
             raise ValueError(f"Unsupported model name: {self.model_name}")
-
-
-
-

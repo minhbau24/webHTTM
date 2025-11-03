@@ -64,7 +64,7 @@ async def train_with_websocket(
         if not train_data or not val_data:
             raise ValueError("train_data and val_data cannot be empty!")
 
-        # Data already contains "label" field, pass directly to SpeakerDataset
+        # ép kiểu label về int
         train_records = [{**x, "label": int(x["label"])} for x in train_data]
         val_records = [{**x, "label": int(x["label"])} for x in val_data]
         test_records = [{**x, "label": int(x["label"])} for x in test_data]
@@ -336,7 +336,7 @@ async def websocket_train_endpoint(websocket: WebSocket):
                 file_path = file_path.strip('"').strip("'")
                 
                 # Get user_id, convert to int for label
-                user_id = item.get("user_id") or item.get("label")
+                user_id = item.get("label")
                 if isinstance(user_id, str):
                     user_id = int(user_id)
                 
